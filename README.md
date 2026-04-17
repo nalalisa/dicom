@@ -18,6 +18,8 @@ GE Vivid 3D TEE DICOM 파일에서 spacing 정보를 추출하고, scan conversi
   - SlicerHeart의 `KretzFileReader`를 사용해 scan-converted volume의 spacing/origin/dimensions를 JSON으로 저장합니다
 - `GE_Vivid_3D_TEE_spacing_plan.md`
   - spacing 추출 및 검증 전략을 정리한 계획 문서
+- `GE_Vivid_3D_TEE_DICOM_구조_총정리.md`
+  - GE 3D TEE DICOM 구조를 파일 레이어, private tag, KRETZ payload, raw/scan-converted spacing 관점에서 시각적으로 정리한 문서
 - `GE_3D_TEE_DICOM_보고서.md`
   - 배경 설명과 구조 분석 보고서
 - `GE_3D_TEE_DICOM_발표자료.pptx`
