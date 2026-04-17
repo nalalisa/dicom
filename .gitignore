@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+ge_scanconvert_output/
+ge_spacing_output/
+synthetic_out/
+synthetic_scanconvert_out/
+synthetic_*.dcm
+
