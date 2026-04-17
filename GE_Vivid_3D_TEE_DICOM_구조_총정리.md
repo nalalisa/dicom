@@ -322,6 +322,25 @@ KRETZFILE 1.0
 
 즉 raw geometry는 **mm 하나 + 두 개의 angle array** 조합으로 정의된다.
 
+### DICOM element vs KRETZ item 비교
+
+KRETZ를 이해할 때 가장 좋은 관점은 “DICOM과 비슷한 tagged binary 구조이지만, 표준 DICOM element는 아니다”라고 보는 것이다.
+
+| 항목 | DICOM element | KRETZ item |
+|---|---|---|
+| 정체 | 국제 표준 의료 데이터 요소 | GE/Kretz 독자 바이너리 요소 |
+| 기본 구조 | `Tag + VR + Length + Value` | `Item ID(Group/Element 유사) + DataSize + Data` |
+| 식별자 | 표준 `(Group, Element)` 태그 | GE 내부 `(Group, Element)` 유사 식별자 |
+| 의미 사전 | 공개 표준 사전 존재 | 공개 표준 사전 없음, 구현/리버싱 필요 |
+| 타입 정보 | `VR`로 명시됨 | 보통 별도 `VR` 없음, reader가 item 의미를 알고 해석 |
+| 길이 정보 | `Length` 있음 | `DataSize` 있음 |
+| 값 영역 | 표준 규약 기반 해석 가능 | GE 내부 규칙으로 해석해야 함 |
+| 목적 | 병원 시스템 간 상호운용 | GE 3D raw payload 내부 저장 |
+| 외부 해석 가능성 | 일반 DICOM 파서가 읽음 | GE reader 또는 리버싱 코드 필요 |
+| 예시 | `(0010,0010) Patient Name` | `(C100,0001) Radial resolution` |
+
+즉 KRETZ는 구조적으로는 DICOM과 닮았지만, **GE가 정의한 자체 tagged binary/chunk 포맷**이라고 보는 것이 가장 정확하다.
+
 ---
 
 ## 7. raw 텐서의 좌표계
