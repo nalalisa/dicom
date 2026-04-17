@@ -80,6 +80,79 @@ flowchart TD
 
 이 “모르면 length만큼 건너뛴다”는 성질 때문에, GE private 영역을 모르는 범용 뷰어도 파일 전체가 깨지지 않고 동작할 수 있다.
 
+### 실제 파싱 예시: `(7FE1,0011)`에서 value 찾기
+
+예를 들어 GE KRETZ 파일에서 다음 private creator를 본다고 하자.
+
+```text
+(7FE1,0011) LO "KRETZ_US"
+```
+
+이 표현은 사람이 보기 쉽게 풀어 쓴 것이고, 실제 파일에서는 대략 아래 순서로 저장된다.
+
+```text
+[Tag]         [VR] [Length] [Value]
+7FE1,0011      LO   0008     "KRETZ_US"
+```
+
+리틀 엔디안 파일이라면 바이트 레벨에서는 개념적으로 이렇게 볼 수 있다.
+
+```text
+E1 7F 11 00   4C 4F   08 00   4B 52 45 54 5A 5F 55 53
+│  │  │  │    │  │    │  │    └──────────── value = "KRETZ_US"
+│  │  │  │    │  │    └─ length = 8 bytes
+│  │  │  │    └─ VR = LO
+└─────────────── tag = (7FE1,0011)
+```
+
+여기서 파서는 다음 순서로 움직인다.
+
+1. 먼저 4바이트를 읽어 `(Group, Element)`를 만든다.  
+   이 경우 `(7FE1,0011)`이다.
+
+2. 다음 2바이트를 읽어 `VR`을 해석한다.  
+   여기서는 `LO`다.
+
+3. 다음 2바이트 또는 4바이트를 읽어 `Length`를 얻는다.  
+   여기서는 `8`이다.
+
+4. 그 뒤의 8바이트를 읽으면 그 태그의 실제 `Value`가 된다.  
+   즉 `"KRETZ_US"`다.
+
+즉 태그만 보고 바로 점프하는 것이 아니라, **파일을 순차적으로 읽다가 원하는 태그를 만나면 Length를 읽고 그 뒤 Value를 해석하는 구조**다.
+
+아래처럼 생각하면 된다.
+
+```mermaid
+flowchart LR
+    A["Read 4 bytes"] --> B["Tag = (7FE1,0011)"]
+    B --> C["Read 2 bytes"]
+    C --> D["VR = LO"]
+    D --> E["Read length"]
+    E --> F["Length = 8"]
+    F --> G["Read next 8 bytes"]
+    G --> H["Value = KRETZ_US"]
+```
+
+파이썬에서 `pydicom`을 쓰면 이 과정을 직접 구현하지 않아도 된다.
+
+```python
+import pydicom
+
+ds = pydicom.dcmread("file.dcm")
+value = ds[(0x7FE1, 0x0011)].value
+print(value)  # KRETZ_US
+```
+
+GE 3D TEE 구조를 분석할 때 이 예시가 중요한 이유는, 결국 `(7FE1,0011)` 같은 private creator를 먼저 읽고 나서야 그 다음 private payload `(7FE1,1101)` 같은 값의 의미를 추적할 수 있기 때문이다.
+
+즉 실전에서는 보통 아래 순서로 간다.
+
+```text
+(7FE1,0011) -> "이 private block의 소유자가 누구인지 확인"
+(7FE1,1101) -> "그 소유자가 넣은 실제 payload 읽기"
+```
+
 ---
 
 ## 3. 왜 GE 3D TEE DICOM은 특이한가
