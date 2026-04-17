@@ -36,6 +36,46 @@ GE Vivid 3D TEE DICOM은 아래처럼 이해하면 가장 쉽다.
 
 즉 “spacing 하나”만 찾는 문제처럼 보이지만, 실제로는 **좌표계가 두 번 바뀌는 구조**다.
 
+### 바깥 DICOM 레벨 vs 안쪽 GE payload 레벨
+
+이 구조를 가장 헷갈리지 않게 이해하는 방법은 파일을 **2층 구조**로 보는 것이다.
+
+```text
+Layer 1: 바깥 DICOM 레벨
+  [Tag][VR][Length][Value]
+  [Tag][VR][Length][Value]
+  [Tag][VR][Length][Value]
+  ...
+  [Private Tag][VR][Length][Value]
+
+Layer 2: 안쪽 GE payload 레벨
+  위 Private Tag의 Value 안쪽에
+  GE가 정의한 별도 바이너리 구조가 들어 있음
+```
+
+즉 중요한 점은 다음이다.
+
+- private tag가 나왔다고 해서 DICOM 형식이 깨지는 것은 아니다
+- **private tag 자체는 끝까지 DICOM element**다
+- 다만 그 tag의 `Value` 안에 GE 전용 포맷이 들어 있는 것이다
+
+아래 그림으로 보면 더 직관적이다.
+
+```mermaid
+flowchart TD
+    A["DICOM file"] --> B["Standard element"]
+    A --> C["Standard element"]
+    A --> D["Private element"]
+    D --> E["Tag = (7FE1,1101)"]
+    D --> F["VR = OB"]
+    D --> G["Length = large"]
+    D --> H["Value = GE binary payload"]
+    H --> I["KRETZ header / chunk / arrays / voxel data"]
+```
+
+즉 “private tag 뒤부터는 DICOM이 아니다”가 아니라,  
+**“private tag의 value 내부가 GE 독자 바이너리 포맷이다”**가 정확한 표현이다.
+
 ---
 
 ## 2. DICOM 기본 구조
