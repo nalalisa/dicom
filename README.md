@@ -1,4 +1,4 @@
-# dicom
+9# dicom
 
 GE Vivid 3D TEE DICOM 파일에서 spacing 정보를 추출하고, scan conversion 결과를 검증하기 위한 실험용 스크립트 모음입니다.
 
@@ -319,3 +319,91 @@ python ge_vivid_spacing_extract.py "C:\path\to\file.dcm" --output-dir out --pred
 
 가장 먼저는 `ge_vivid_scanconvert_view.py` 상단에 DICOM 경로를 넣고 실행해 보시면 됩니다.  
 그 다음 `scan_converted_slices.png`가 정상적으로 보이는지 확인하고, 더 깊게 보려면 `ge_vivid_spacing_extract.py`와 `slicer_kretz_probe.py`로 검증을 확장하면 됩니다.
+
+지금까지 논의된 3D 초음파 스캔 변환(Scan Conversion)의 모든 핵심을 하나로 엮어, **'트랜스듀서 원점을 윗면 중앙에 배치하는 등방성(Isotropic) 변환'**을 기준으로 마스터 정리본을 작성해 드리겠습니다.
+메모리 상의 '직육면체 Raw 데이터'를 모니터 상의 '부채꼴 3D 공간'으로 펴내는 전체 수학적 유도 과정과 로직입니다.
+### 1. 물리적 공간 정의 및 Bounding Box 유도
+컴퓨터 메모리 상의 3D 배열(Raw Data)을 실제 물리적 공간으로 매핑하기 위해, 초음파가 도달하는 최대 물리적 크기(Bounding Box)를 계산합니다.
+ * **초기 조건:**
+   * 깊이 범위: r_{start} ~ r_{end}
+   * 전체 방위각 폭: \theta_{span} \rightarrow 중심축 기준 최대 방위각 \theta_{max} = \frac{\theta_{span}}{2}
+   * 전체 고도각 폭: \phi_{span} \rightarrow 중심축 기준 최대 고도각 \phi_{max} = \frac{\phi_{span}}{2}
+   * 목표 출력 배열 크기: N \times N \times N (예: 256)
+ * **축별 물리적 길이 도출:**
+   트랜스듀서 원점을 Z축의 시작점(0)으로 둔 상태에서, 빔이 뻗어나가는 최대 너비와 깊이를 삼각함수로 유도합니다.
+   
+### 2. 등방성(Isotropic) Spacing 계산
+영상의 왜곡(찌그러짐)을 방지하기 위해 가로, 세로, 깊이 방향의 복셀 크기를 모두 동일하게 통일합니다.
+ * **최대 축 탐색 및 Spacing 결정:**
+   세 축의 물리적 길이 중 가장 긴 축을 기준으로 Spacing(d)을 구하여, 모든 방향의 복셀 간격에 동일하게 적용합니다.
+   
+### 3. 좌표계 매핑 및 역방향 스캔 변환 (Backward Mapping)
+결과물이 담길 N \times N \times N 배열의 인덱스 공간을 실제 물리적 직교 좌표계로 변환한 뒤, 이를 다시 구면 좌표계로 역산합니다.
+ * **인덱스 \rightarrow 직교 좌표계 매핑 (Top-Center Origin):**
+   배열 인덱스 i, j, k \in [0, N-1] 에 대하여, 트랜스듀서 원점을 윗면(Z=0) 정중앙에 배치하도록 좌표를 평행 이동합니다.
+   
+ * **직교 좌표계 \rightarrow 구면 좌표계 역산:**
+   물리적 공간의 복셀 (x, y, z) 위치에 색을 칠하기 위해, 해당 위치의 원래 초음파 좌표 $(r, \theta, \phi)$가 무엇이었는지 수학적으로 역추적합니다.
+   
+### 4. 마스킹(Masking) 및 3D 삼선형 보간(Trilinear Interpolation)
+역산된 구면 좌표가 실제 초음파가 스캔한 부채꼴 영역 안에 있는지 판별하고, 영역 안이라면 주변 8개 데이터의 가중 평균을 구해 값을 채웁니다.
+ * **유효 영역 조건:**
+   
+ * **보간 로직:**
+   위 조건을 만족하지 않으면 배열의 해당 위치는 **0 (Zero Padding)**으로 남습니다. 조건을 만족하면 역산된 (r, \theta, \phi) 실수 좌표를 둘러싼 Raw Data의 인접한 8개 정수 인덱스를 찾아 거리 반비례 가중치로 픽셀 값을 계산합니다.
+### 5. 마스터 의사코드 (Master Pseudo-code)
+위의 모든 수학적 유도 과정과 로직을 소프트웨어 알고리즘 형태로 정리한 최종 의사코드입니다.
+```text
+함수 Master_Scan_Conversion(Raw_Data, R시작, R끝, 방위각폭, 고도각폭, N=256):
+
+    // [1] 물리적 한계점(Bounding Box) 계산
+    Theta_max = 방위각폭 / 2
+    Phi_max = 고도각폭 / 2
+    
+    L_x = 2 * R끝 * sin(Theta_max)
+    L_y = 2 * R끝 * sin(Phi_max)
+    L_z = R끝
+    
+    // [2] Isotropic Spacing 도출
+    L_max = max(L_x, L_y, L_z)
+    d = L_max / N
+    
+    // [3] 최종 출력용 빈 3D 배열 생성 (Zero Padding 기본값)
+    Display_Volume = 생성(N, N, N, 초기값=0)
+    
+    // [4] 메모리 배열의 모든 복셀을 순회하며 매핑 및 역산
+    FOR i FROM 0 TO N-1:        // X축 인덱스
+        FOR j FROM 0 TO N-1:    // Y축 인덱스
+            FOR k FROM 0 TO N-1:// Z축 인덱스
+                
+                // A. 인덱스(메모리)를 직교 좌표(물리공간)로 변환 (윗면 중앙 원점)
+                x = (i - (N - 1) / 2) * d
+                y = (j - (N - 1) / 2) * d
+                z = k * d
+                
+                // Z가 0이고 X,Y가 0인 원점(트랜스듀서)에서의 분모 0 예외 처리
+                IF x == 0 AND y == 0 AND z == 0:
+                    r, theta, phi = 0, 0, 0
+                ELSE:
+                    // B. 직교 좌표를 구면 좌표로 역산
+                    r = sqrt(x^2 + y^2 + z^2)
+                    theta = arctan(x / z)
+                    phi = arcsin(y / r)
+                
+                // C. 유효 스캔 영역(부채꼴 공간) 확인
+                IF (r >= R시작 AND r <= R끝) AND 
+                   (abs(theta) <= Theta_max) AND 
+                   (abs(phi) <= Phi_max):
+                   
+                    // D. Raw Data(인덱스 공간의 직육면체)에서 3D 삼선형 보간 수행
+                    픽셀값 = Trilinear_Interpolation(Raw_Data, r, theta, phi)
+                    
+                    // E. 결과 저장
+                    Display_Volume[i, j, k] = 픽셀값
+                
+                // 유효 영역 밖의 값은 초기값인 0이 그대로 유지됨 (Zero Padding)
+
+    RETURN Display_Volume, d
+
+```
+
